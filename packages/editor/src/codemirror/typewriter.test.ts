@@ -152,6 +152,64 @@ describe("CodeMirror typewriter mode", () => {
     expect(line!.style.getPropertyValue(activeLineCenterProperty)).toBe("62px");
   });
 
+  it("uses the caret's assoc at a soft-wrap boundary", async () => {
+    const { view } = createView(true, {}, "a".repeat(80));
+    const line = view.contentDOM.querySelector<HTMLElement>(".cm-line");
+    expect(line).not.toBeNull();
+    line!.getBoundingClientRect = () => syntheticLineRect(100, 78);
+    const coordsAtPos = vi.spyOn(view, "coordsAtPos").mockImplementation((_position, side) => {
+      const top = side === -1 ? 126 : 152;
+      return { left: 0, right: 0, top, bottom: top + 20 };
+    });
+
+    view.dispatch({
+      selection: EditorSelection.create([EditorSelection.cursor(10, -1)]),
+    });
+    flushMeasure();
+    await Promise.resolve();
+    expect(coordsAtPos).toHaveBeenLastCalledWith(10, -1);
+    expect(line!.style.getPropertyValue(activeLineCenterProperty)).toBe("36px");
+
+    view.dispatch({ selection: EditorSelection.cursor(10) });
+    flushMeasure();
+    await Promise.resolve();
+    expect(coordsAtPos).toHaveBeenLastCalledWith(10, 1);
+    expect(line!.style.getPropertyValue(activeLineCenterProperty)).toBe("62px");
+  });
+
+  it("keeps the band after a whole-document replacement", async () => {
+    const { view } = createView(true, {}, "first\n" + "a".repeat(80));
+    const secondLine = () => {
+      const line = view.contentDOM.querySelectorAll<HTMLElement>(".cm-line")[1]!;
+      line.getBoundingClientRect = () => syntheticLineRect(126, 78);
+      return line;
+    };
+    vi.spyOn(view, "coordsAtPos").mockImplementation((position) => {
+      const top = position < 6 ? 100 : 126;
+      return { left: 0, right: 0, top, bottom: top + 20 };
+    });
+
+    view.dispatch({ selection: EditorSelection.cursor(46) });
+    secondLine();
+    flushMeasure();
+    await Promise.resolve();
+    expect(secondLine().style.getPropertyValue(activeLineCenterProperty)).toBe("10px");
+
+    view.dispatch({
+      changes: {
+        from: 0,
+        to: view.state.doc.length,
+        insert: "other\n" + "b".repeat(80),
+      },
+      selection: EditorSelection.cursor(46),
+    });
+    secondLine();
+    flushMeasure();
+    await Promise.resolve();
+
+    expect(secondLine().style.getPropertyValue(activeLineCenterProperty)).toBe("10px");
+  });
+
   it("moves the band between logical lines and clears the previous line", async () => {
     const { view } = createView();
     const lines = [...view.contentDOM.querySelectorAll<HTMLElement>(".cm-line")];

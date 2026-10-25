@@ -125,6 +125,10 @@ class CodeMirrorTypewriterView {
 
   update(update: ViewUpdate) {
     if (update.geometryChanged) this.updatePadding();
+    // Document changes can map the band decoration away even when the caret
+    // line and its geometry stay identical, so the previous signature must not
+    // suppress the re-dispatch.
+    if (update.docChanged) this.lastBandSignature = "";
     if (update.docChanged || update.selectionSet || update.geometryChanged) {
       this.scheduleActiveLineBandMeasure();
     }
@@ -281,7 +285,9 @@ class CodeMirrorTypewriterView {
       seenLines.add(line.from);
 
       const element = activeLineElementAt(view, range.head);
-      const caret = view.coordsAtPos(range.head);
+      // `assoc` decides whether a caret at a soft-wrap boundary belongs to the
+      // end of the previous visual row (-1) or the start of the next one.
+      const caret = view.coordsAtPos(range.head, range.assoc || 1);
       if (!element || !caret) continue;
 
       const rect = element.getBoundingClientRect();
